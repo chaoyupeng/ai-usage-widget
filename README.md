@@ -1,16 +1,21 @@
 # AI Usage Widget
 
-A GNOME Shell panel widget showing Claude, Codex, Cursor and Antigravity usage side by side.
+A GNOME Shell panel widget showing AI usage from multiple providers.
 
-The panel shows each provider's icon and primary-window percentage:
+Supported:
+
+- **Claude** — `~/.claude/.credentials.json`, written by `claude login`
+- **Codex** — `~/.codex/auth.json`, written by `codex login`
+- **Cursor** — `~/.config/cursor/auth.json`, written by `cursor-agent login`
+- **Antigravity** — the `gemini`/`antigravity` login keyring entry, written by `agy`
+
+Each provider shows its icon and primary-window percentage in the panel:
 
 ```text
 [Claude icon] 42%  [Codex icon] 18%  [Cursor icon] 7%  [Antigravity icon] 1%
 ```
 
-Providers you are not signed in to are hidden, so the panel only shows the CLIs you actually use.
-
-Click it for the selected provider's plan, usage windows, reset times, and credits. The icon buttons at the top switch providers without closing the popup, and the last choice is remembered.
+Providers you are not signed in to are hidden, so you only see the CLIs you actually use. Click for the selected provider's plan, usage windows, reset times, and credits. The icon buttons at the top switch providers without closing the popup, and the last choice is remembered.
 
 ## Install
 
@@ -26,16 +31,9 @@ On Wayland, GNOME cannot reload extension code in place, so log out and back in 
 gnome-extensions enable ai-usage-widget@chamith
 ```
 
-## Credentials
+## Manual tokens
 
-The widget reads the CLI credentials you already have:
-
-- Claude: `~/.claude/.credentials.json`, written by `claude login`
-- Codex: `~/.codex/auth.json`, written by `codex login`
-- Cursor: `~/.config/cursor/auth.json`, written by `cursor-agent login`
-- Antigravity: the `gemini`/`antigravity` login keyring entry, written by `agy`
-
-To supply a token by hand instead, create `~/.config/ai-usage-widget/config.json`:
+The widget reads the credentials listed above. To supply a token by hand instead, create `~/.config/ai-usage-widget/config.json`:
 
 ```json
 {
