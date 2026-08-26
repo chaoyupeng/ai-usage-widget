@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.ai-usage-widget" path="/org/gnome/shell/extensions/ai-usage-widget/">
+    <key name="selected-provider" type="s">
+      <default>'claude'</default>
+      <summary>Provider shown in the popup</summary>
+    </key>
+    <key name="refresh-interval" type="i">
+      <default>120</default>
+      <range min="30" max="3600"/>
+      <summary>Seconds between usage refreshes</summary>
+    </key>
+    <key name="claude-icon" type="s">
+      <default>''</default>
+      <summary>Path to a custom Claude icon</summary>
+    </key>
+    <key name="codex-icon" type="s">
+      <default>''</default>
+      <summary>Path to a custom Codex icon</summary>
+    </key>
+  </schema>
+</schemalist>

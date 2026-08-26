@@ -1,0 +1,8 @@
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.shell-extension.zip
+gschemas.compiled

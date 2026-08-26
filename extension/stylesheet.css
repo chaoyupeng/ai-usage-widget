@@ -1,0 +1,33 @@
+.ai-usage-panel {
+  spacing: 8px;
+}
+
+.ai-usage-panel-provider {
+  spacing: 4px;
+}
+
+.ai-usage-provider-label {
+  font-feature-settings: "tnum";
+  min-width: 2.4em;
+  text-align: right;
+}
+
+.ai-usage-switcher {
+  spacing: 6px;
+  padding: 2px 4px;
+}
+
+.ai-usage-provider-button {
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.ai-usage-provider-button:hover,
+.ai-usage-provider-button:focus,
+.ai-usage-provider-button.selected {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+.ai-usage-switch-content {
+  spacing: 6px;
+}
