@@ -13,6 +13,7 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {
     ClaudeProvider,
     CodexProvider,
+    CursorProvider,
     MissingCredentialsError,
     RateLimitedError,
     isCancelled,
@@ -72,6 +73,10 @@ class ProviderSwitchItem extends PopupMenu.PopupBaseMenuItem {
         for (const [id, button] of this._buttons)
             button.set_style_class_name(`ai-usage-provider-button${id === providerId ? ' selected' : ''}`);
     }
+
+    setProviderVisible(providerId, visible) {
+        this._buttons.get(providerId).visible = visible;
+    }
 });
 
 const UsageIndicator = GObject.registerClass(
@@ -85,6 +90,7 @@ class UsageIndicator extends PanelMenu.Button {
         this._providers = [
             new ClaudeProvider(this._session),
             new CodexProvider(this._session),
+            new CursorProvider(this._session),
         ];
         this._providersById = new Map(this._providers.map(provider => [provider.id, provider]));
         this._states = new Map(this._providers.map(provider => [provider.id, {
@@ -94,6 +100,7 @@ class UsageIndicator extends PanelMenu.Button {
             stale: false,
             updatedAt: null,
             initialized: false,
+            authenticated: true,
             lastThreshold: 0,
             failures: 0,
             retryAt: null,
@@ -105,14 +112,19 @@ class UsageIndicator extends PanelMenu.Button {
         this._buildPanel();
         this._buildMenu();
         this._applyCustomIcons();
+        for (const provider of this._providers)
+            this._states.get(provider.id).authenticated = provider.isAuthenticated();
+        this._updateVisibility();
 
         this._settingsIds = [
             settings.connect('changed::refresh-interval', () => this._restartRefreshTimer()),
             settings.connect('changed::claude-icon', () => this._applyCustomIcons()),
             settings.connect('changed::codex-icon', () => this._applyCustomIcons()),
+            settings.connect('changed::cursor-icon', () => this._applyCustomIcons()),
         ];
         this._menuId = this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) {
+                this._refreshAuthentication();
                 this._renderDetails();
                 this._startClock();
             } else {
@@ -129,6 +141,7 @@ class UsageIndicator extends PanelMenu.Button {
     _buildPanel() {
         this._panelIcons = new Map();
         this._panelLabels = new Map();
+        this._panelGroups = new Map();
         const panel = new St.BoxLayout({
             style_class: 'ai-usage-panel',
             y_align: Clutter.ActorAlign.CENTER,
@@ -147,9 +160,17 @@ class UsageIndicator extends PanelMenu.Button {
             });
             group.add_child(label);
             panel.add_child(group);
+            this._panelGroups.set(provider.id, group);
             this._panelIcons.set(provider.id, icon);
             this._panelLabels.set(provider.id, label);
         }
+        this._emptyLabel = new St.Label({
+            text: '–',
+            style_class: 'ai-usage-empty-label',
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        panel.add_child(this._emptyLabel);
         this.add_child(panel);
     }
 
@@ -165,6 +186,7 @@ class UsageIndicator extends PanelMenu.Button {
         this._planItem = this._detailItem();
         this._windowItems = Array.from({length: 4}, () => this._detailItem());
         this._extraItem = this._detailItem();
+        this._emptyItem = this._detailItem();
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._updatedItem = this._detailItem('Updated: never');
 
@@ -244,6 +266,17 @@ class UsageIndicator extends PanelMenu.Button {
         if (!force && state.retryAt !== null && Date.now() < state.retryAt)
             return;
 
+        if (!provider.isAuthenticated()) {
+            state.authenticated = false;
+            state.snapshot = null;
+            state.error = provider.loginHint;
+            state.needsLogin = true;
+            state.retryAt = null;
+            this._afterRefresh(provider);
+            return;
+        }
+        state.authenticated = true;
+
         state.inFlight = true;
         try {
             const snapshot = await provider.fetch(this._cancellable);
@@ -264,6 +297,8 @@ class UsageIndicator extends PanelMenu.Button {
                 return;
             state.error = error.message;
             state.needsLogin = error instanceof MissingCredentialsError;
+            if (state.needsLogin)
+                state.authenticated = false;
             state.stale = state.snapshot !== null;
             state.retryAt = Date.now() + this._backoffFor(error, state) * 1000;
             state.failures += 1;
@@ -274,9 +309,44 @@ class UsageIndicator extends PanelMenu.Button {
 
         if (!this._active)
             return;
+        this._afterRefresh(provider);
+    }
+
+    _afterRefresh(provider) {
+        this._updateVisibility();
         this._renderPanel();
         if (provider.id === this._selectedId)
             this._renderDetails();
+    }
+
+    /** Re-read credentials so a provider appears (or vanishes) without a request. */
+    _refreshAuthentication() {
+        for (const provider of this._providers) {
+            const state = this._states.get(provider.id);
+            if (!state.snapshot)
+                state.authenticated = provider.isAuthenticated();
+        }
+        this._updateVisibility();
+        this._renderPanel();
+    }
+
+    _updateVisibility() {
+        let visible = 0;
+        for (const provider of this._providers) {
+            const shown = this._states.get(provider.id).authenticated;
+            this._panelGroups.get(provider.id).visible = shown;
+            this._switcher.setProviderVisible(provider.id, shown);
+            if (shown)
+                visible += 1;
+        }
+        this._emptyLabel.visible = visible === 0;
+
+        if (visible > 0 && !this._states.get(this._selectedId).authenticated) {
+            const fallback = this._providers.find(
+                candidate => this._states.get(candidate.id).authenticated);
+            if (fallback)
+                this._selectProvider(fallback.id);
+        }
     }
 
     _backoffFor(error, state) {
@@ -321,6 +391,21 @@ class UsageIndicator extends PanelMenu.Button {
 
     _renderDetails() {
         const now = Date.now();
+        const signedIn = this._providers.some(
+            provider => this._states.get(provider.id).authenticated);
+        this._emptyItem.visible = !signedIn;
+        if (!signedIn) {
+            this._emptyItem.label.text =
+                'Sign in with claude, codex, or cursor-agent';
+            this._planItem.visible = false;
+            this._extraItem.visible = false;
+            for (const item of this._windowItems)
+                item.visible = false;
+            this._updatedItem.visible = false;
+            return;
+        }
+        this._updatedItem.visible = true;
+
         const state = this._states.get(this._selectedId);
         const snapshot = state.snapshot;
         this._planItem.visible = Boolean(snapshot?.plan);

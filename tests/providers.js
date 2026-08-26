@@ -3,6 +3,7 @@ import {
     RateLimitedError,
     parseClaudeUsage,
     parseCodexUsage,
+    parseCursorUsage,
 } from '../extension/providers.js';
 
 import {assertEqual} from './assert.js';
@@ -55,5 +56,28 @@ assertEqual(
     'run `claude login`',
     'credential error keeps its message'
 );
+
+// Shape captured from a live GetCurrentPeriodUsage response.
+const cursor = parseCursorUsage({
+    billingCycleStart: '1786240009679',
+    billingCycleEnd: '1788918409679',
+    planUsage: {totalPercentUsed: 42.7, autoPercentUsed: 0},
+    spendLimitUsage: {overallLimit: 0, overallRemaining: 0},
+});
+assertEqual(cursor.windows[0].label, '31d', 'Cursor billing cycle length');
+assertEqual(cursor.windows[0].percent, 42, 'Cursor percentage');
+assertEqual(cursor.windows[0].resetsAt, 1788918409679, 'Cursor cycle end');
+assertEqual(cursor.extra, null, 'Cursor without a spend limit');
+
+const capped = parseCursorUsage({
+    billingCycleStart: '1786240009679',
+    billingCycleEnd: '1788918409679',
+    planUsage: {totalPercentUsed: 10},
+    spendLimitUsage: {overallLimit: 200, overallRemaining: 50},
+});
+assertEqual(capped.extra, 'Spend: 75% of limit', 'Cursor spend limit');
+
+const noCycle = parseCursorUsage({});
+assertEqual(noCycle.windows.length, 0, 'Cursor without a billing cycle');
 
 print('Provider tests passed');

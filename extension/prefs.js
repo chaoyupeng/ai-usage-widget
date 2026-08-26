@@ -7,6 +7,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 const PROVIDERS = [
     {id: 'claude', name: 'Claude'},
     {id: 'codex', name: 'Codex'},
+    {id: 'cursor', name: 'Cursor'},
 ];
 
 export default class AIUsagePreferences extends ExtensionPreferences {

@@ -13,6 +13,9 @@ Gio._promisify(Soup.Session.prototype, 'send_and_read_async', 'send_and_read_fin
 
 const CLAUDE_USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/codex/usage';
+const CURSOR_USAGE_URL =
+    'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage';
+const USER_AGENT = 'ai-usage-widget';
 
 export class ProviderError extends Error {}
 export class MissingCredentialsError extends ProviderError {}
@@ -56,10 +59,14 @@ function manualToken(providerId) {
     return readJson(path)?.providers?.[providerId]?.oauth_token ?? null;
 }
 
-export async function getJson(session, url, headers, cancellable) {
-    const message = Soup.Message.new('GET', url);
+export async function getJson(session, url, headers, cancellable, body = null) {
+    const message = Soup.Message.new(body === null ? 'GET' : 'POST', url);
     for (const [name, value] of Object.entries(headers))
         message.request_headers.append(name, value);
+    if (body !== null) {
+        message.set_request_body_from_bytes('application/json',
+            new GLib.Bytes(new TextEncoder().encode(JSON.stringify(body))));
+    }
 
     let bytes;
     try {
@@ -153,59 +160,164 @@ export function parseCodexUsage(data, now = Date.now()) {
     };
 }
 
-export class ClaudeProvider {
-    constructor(session) {
-        this.id = 'claude';
-        this.name = 'Claude';
+/**
+ * A provider knows where its CLI keeps credentials, which usage endpoint to
+ * call, and how to read the response. `credentials()` returns null when the
+ * user has not logged in, which is what hides the provider from the panel.
+ */
+class Provider {
+    constructor(session, id, name) {
+        this.id = id;
+        this.name = name;
         this._session = session;
     }
 
-    async fetch(cancellable) {
-        const path = GLib.build_filenamev([
-            GLib.get_home_dir(), '.claude', '.credentials.json',
-        ]);
-        const credentials = readJson(path)?.claudeAiOauth ?? {};
-        const token = manualToken(this.id) ?? credentials.accessToken;
-        if (!token)
-            throw new MissingCredentialsError('run `claude login`');
+    /** Whether the CLI is logged in. Malformed files count as present so the error shows. */
+    isAuthenticated() {
+        try {
+            return this.credentials() !== null;
+        } catch (_error) {
+            return true;
+        }
+    }
 
-        const data = await getJson(this._session, CLAUDE_USAGE_URL, {
-            Accept: 'application/json',
-            Authorization: `Bearer ${token}`,
-            'anthropic-beta': 'oauth-2025-04-20',
-            'User-Agent': 'ai-usage-widget',
-        }, cancellable);
-        return parseClaudeUsage(data, credentials.subscriptionType);
+    async fetch(cancellable) {
+        const credentials = this.credentials();
+        if (credentials === null)
+            throw new MissingCredentialsError(this.loginHint);
+        const data = await getJson(
+            this._session,
+            this.usageUrl,
+            this.headers(credentials),
+            cancellable,
+            this.body ?? null
+        );
+        return this.parse(data);
     }
 }
 
-export class CodexProvider {
+export class ClaudeProvider extends Provider {
     constructor(session) {
-        this.id = 'codex';
-        this.name = 'Codex';
-        this._session = session;
+        super(session, 'claude', 'Claude');
+        this.usageUrl = CLAUDE_USAGE_URL;
+        this.loginHint = 'run `claude login`';
+    }
+
+    credentials() {
+        const path = GLib.build_filenamev([
+            GLib.get_home_dir(), '.claude', '.credentials.json',
+        ]);
+        const stored = readJson(path)?.claudeAiOauth ?? {};
+        const token = manualToken(this.id) ?? stored.accessToken;
+        return token ? {token, plan: stored.subscriptionType} : null;
+    }
+
+    headers({token}) {
+        return {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'anthropic-beta': 'oauth-2025-04-20',
+            'User-Agent': USER_AGENT,
+        };
+    }
+
+    parse(data) {
+        return parseClaudeUsage(data, this._plan);
     }
 
     async fetch(cancellable) {
+        this._plan = this.credentials()?.plan ?? null;
+        return super.fetch(cancellable);
+    }
+}
+
+export class CodexProvider extends Provider {
+    constructor(session) {
+        super(session, 'codex', 'Codex');
+        this.usageUrl = CODEX_USAGE_URL;
+        this.loginHint = 'run `codex login`';
+    }
+
+    credentials() {
         const codexHome = GLib.getenv('CODEX_HOME') ??
             GLib.build_filenamev([GLib.get_home_dir(), '.codex']);
-        const credentials = readJson(
+        const stored = readJson(
             GLib.build_filenamev([codexHome, 'auth.json'])
         )?.tokens ?? {};
-        const configuredToken = manualToken(this.id);
-        const token = configuredToken ?? credentials.access_token;
+        const configured = manualToken(this.id);
+        const token = configured ?? stored.access_token;
         if (!token)
-            throw new MissingCredentialsError('run `codex login`');
+            return null;
+        return {token, accountId: configured ? null : stored.account_id ?? null};
+    }
 
+    headers({token, accountId}) {
         const headers = {
             Accept: 'application/json',
             Authorization: `Bearer ${token}`,
-            'User-Agent': 'ai-usage-widget',
+            'User-Agent': USER_AGENT,
         };
-        if (!configuredToken && credentials.account_id)
-            headers['chatgpt-account-id'] = credentials.account_id;
+        if (accountId)
+            headers['chatgpt-account-id'] = accountId;
+        return headers;
+    }
 
-        const data = await getJson(this._session, CODEX_USAGE_URL, headers, cancellable);
+    parse(data) {
         return parseCodexUsage(data);
+    }
+}
+
+export function parseCursorUsage(data) {
+    const usage = data.planUsage ?? {};
+    const start = Number(data.billingCycleStart);
+    const end = Number(data.billingCycleEnd);
+    const windows = [];
+    if (Number.isFinite(end)) {
+        const span = Number.isFinite(start) ? Math.round((end - start) / 1000) : 0;
+        windows.push({
+            label: windowLabel(span),
+            percent: clampPercent(usage.totalPercentUsed),
+            resetsAt: end,
+        });
+    }
+
+    // Spend is reported as a bare integer of unknown unit, so report the
+    // proportion used rather than a currency amount.
+    const limits = data.spendLimitUsage ?? {};
+    const limit = Number(limits.overallLimit);
+    const remaining = Number(limits.overallRemaining);
+    let extra = null;
+    if (Number.isFinite(limit) && limit > 0 && Number.isFinite(remaining))
+        extra = `Spend: ${clampPercent((1 - remaining / limit) * 100)}% of limit`;
+
+    return {plan: null, windows, extra};
+}
+
+export class CursorProvider extends Provider {
+    constructor(session) {
+        super(session, 'cursor', 'Cursor');
+        this.usageUrl = CURSOR_USAGE_URL;
+        this.loginHint = 'run `cursor-agent login`';
+        this.body = {};
+    }
+
+    credentials() {
+        const path = GLib.build_filenamev([
+            GLib.get_user_config_dir(), 'cursor', 'auth.json',
+        ]);
+        const token = manualToken(this.id) ?? readJson(path)?.accessToken;
+        return token ? {token} : null;
+    }
+
+    headers({token}) {
+        return {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'User-Agent': USER_AGENT,
+        };
+    }
+
+    parse(data) {
+        return parseCursorUsage(data);
     }
 }

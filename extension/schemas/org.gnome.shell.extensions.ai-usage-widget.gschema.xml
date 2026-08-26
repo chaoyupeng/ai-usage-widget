@@ -18,5 +18,9 @@
       <default>''</default>
       <summary>Path to a custom Codex icon</summary>
     </key>
+    <key name="cursor-icon" type="s">
+      <default>''</default>
+      <summary>Path to a custom Cursor icon</summary>
+    </key>
   </schema>
 </schemalist>

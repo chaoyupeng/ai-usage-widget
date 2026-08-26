@@ -46,9 +46,22 @@ function codexGlyph(cr) {
     cr.stroke();
 }
 
+function cursorGlyph(cr) {
+    cr.moveTo(11.5, 8.5);
+    cr.lineTo(11.5, 22.5);
+    cr.lineTo(15.2, 18.8);
+    cr.lineTo(17.6, 23.5);
+    cr.lineTo(20.2, 22.2);
+    cr.lineTo(17.9, 17.8);
+    cr.lineTo(22.5, 17.2);
+    cr.closePath();
+    cr.fill();
+}
+
 export const GLYPHS = {
     claude: claudeGlyph,
     codex: codexGlyph,
+    cursor: cursorGlyph,
 };
 
 /**
