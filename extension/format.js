@@ -92,6 +92,29 @@ export function formatRetry(retryAt, now = Date.now()) {
     return `retrying in ${coarseDuration(seconds)}`;
 }
 
+/** Detail rows one provider needs: a row per usage window, or a status row. */
+export function detailRowCount(state, maxRows) {
+    const windows = Math.min(state?.snapshot?.windows?.length ?? 0, maxRows);
+    if (state?.error && windows < maxRows)
+        return windows + 1;
+    if (!state?.snapshot)
+        return Math.max(windows, 1);
+    return windows;
+}
+
+/**
+ * Rows the menu reserves: what the hungriest provider needs, not what the
+ * selected one needs. Sizing the menu to the selected provider lets it resize
+ * on every switch, and a menu that resizes also moves — BoxPointer clamps its
+ * x against the work area by subtracting the natural width.
+ */
+export function reservedRows(states, maxRows) {
+    return Math.min(
+        maxRows,
+        Math.max(0, ...states.map(state => detailRowCount(state, maxRows)))
+    );
+}
+
 export function formatAgo(updatedAt, now = Date.now()) {
     const minutes = Math.trunc((now - updatedAt) / 60000);
     if (minutes <= 0)

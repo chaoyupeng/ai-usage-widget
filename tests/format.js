@@ -1,10 +1,12 @@
 import {
     colorForPercent,
+    detailRowCount,
     formatAgo,
     formatReset,
     formatRetry,
     makeBar,
     prettyPlan,
+    reservedRows,
     windowLabel,
 } from '../extension/format.js';
 
@@ -42,5 +44,23 @@ assertEqual(windowLabel(0), 'usage', 'missing window length');
 assertEqual(prettyPlan('chatgpt_plus'), 'Plus', 'codex plan prefix stripped');
 assertEqual(prettyPlan('self_serve_max'), 'Max', 'claude plan prefix stripped');
 assertEqual(prettyPlan(null), null, 'no plan');
+
+const twoWindows = {snapshot: {windows: [{}, {}]}, error: null};
+const oneWindow = {snapshot: {windows: [{}]}, error: null};
+const loading = {snapshot: null, error: null};
+const failed = {snapshot: {windows: [{}]}, error: 'network unreachable'};
+
+assertEqual(detailRowCount(twoWindows, 4), 2, 'a row per window');
+assertEqual(detailRowCount(oneWindow, 4), 1, 'one window, one row');
+assertEqual(detailRowCount(loading, 4), 1, 'status row while loading');
+assertEqual(detailRowCount(failed, 4), 2, 'stale window plus a status row');
+assertEqual(detailRowCount(twoWindows, 1), 1, 'never more rows than the pool');
+
+// The point of the exercise: providers of different shapes reserve the same
+// number of rows, so switching between them cannot resize the menu.
+assertEqual(reservedRows([twoWindows, oneWindow], 4), 2, 'reserve the larger');
+assertEqual(reservedRows([oneWindow, twoWindows], 4), 2, 'order does not matter');
+assertEqual(reservedRows([loading, loading], 4), 1, 'both still loading');
+assertEqual(reservedRows([twoWindows, oneWindow], 1), 1, 'capped by the pool');
 
 print('Format tests passed');
