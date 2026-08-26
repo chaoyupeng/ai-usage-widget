@@ -11,6 +11,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {
+    AntigravityProvider,
     ClaudeProvider,
     CodexProvider,
     CursorProvider,
@@ -91,6 +92,7 @@ class UsageIndicator extends PanelMenu.Button {
             new ClaudeProvider(this._session),
             new CodexProvider(this._session),
             new CursorProvider(this._session),
+            new AntigravityProvider(this._session),
         ];
         this._providersById = new Map(this._providers.map(provider => [provider.id, provider]));
         this._states = new Map(this._providers.map(provider => [provider.id, {
@@ -121,6 +123,7 @@ class UsageIndicator extends PanelMenu.Button {
             settings.connect('changed::claude-icon', () => this._applyCustomIcons()),
             settings.connect('changed::codex-icon', () => this._applyCustomIcons()),
             settings.connect('changed::cursor-icon', () => this._applyCustomIcons()),
+            settings.connect('changed::antigravity-icon', () => this._applyCustomIcons()),
         ];
         this._menuId = this.menu.connect('open-state-changed', (_menu, open) => {
             if (open) {
@@ -266,19 +269,22 @@ class UsageIndicator extends PanelMenu.Button {
         if (!force && state.retryAt !== null && Date.now() < state.retryAt)
             return;
 
-        if (!provider.isAuthenticated()) {
-            state.authenticated = false;
-            state.snapshot = null;
-            state.error = provider.loginHint;
-            state.needsLogin = true;
-            state.retryAt = null;
-            this._afterRefresh(provider);
-            return;
-        }
-        state.authenticated = true;
-
         state.inFlight = true;
         try {
+            await provider.prepare();
+            if (!this._active)
+                return;
+            if (!provider.isAuthenticated()) {
+                state.authenticated = false;
+                state.snapshot = null;
+                state.error = provider.loginHint;
+                state.needsLogin = true;
+                state.retryAt = null;
+                this._afterRefresh(provider);
+                return;
+            }
+            state.authenticated = true;
+
             const snapshot = await provider.fetch(this._cancellable);
             if (!this._active)
                 return;

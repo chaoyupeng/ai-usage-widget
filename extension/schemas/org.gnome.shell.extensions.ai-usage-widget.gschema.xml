@@ -22,5 +22,9 @@
       <default>''</default>
       <summary>Path to a custom Cursor icon</summary>
     </key>
+    <key name="antigravity-icon" type="s">
+      <default>''</default>
+      <summary>Path to a custom Antigravity icon</summary>
+    </key>
   </schema>
 </schemalist>

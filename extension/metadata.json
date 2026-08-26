@@ -1,7 +1,7 @@
 {
   "uuid": "ai-usage-widget@chamith",
   "name": "AI Usage Widget",
-  "description": "Claude, Codex and Cursor usage in one GNOME panel widget",
+  "description": "Claude, Codex, Cursor and Antigravity usage in one GNOME panel widget",
   "shell-version": ["47", "48", "49", "50"],
   "settings-schema": "org.gnome.shell.extensions.ai-usage-widget",
   "version": 1

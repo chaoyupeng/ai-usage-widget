@@ -16,6 +16,11 @@ const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/codex/usage';
 const CURSOR_USAGE_URL =
     'https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage';
 const USER_AGENT = 'ai-usage-widget';
+const ANTIGRAVITY_HOST = 'daily-cloudcode-pa.googleapis.com';
+// The backend gates on client identity: a gemini-cli-shaped request is refused
+// with SUBSCRIPTION_REQUIRED even when the token itself is valid.
+const ANTIGRAVITY_UA = 'antigravity/cli/1.1.21 (aidev_client; os_type=linux; ' +
+    'arch=amd64; cl=970856724; auth_method=consumer)';
 
 export class ProviderError extends Error {}
 export class MissingCredentialsError extends ProviderError {}
@@ -181,6 +186,9 @@ class Provider {
         }
     }
 
+    /** Hook for providers whose credentials need async work before they are readable. */
+    async prepare() {}
+
     async fetch(cancellable) {
         const credentials = this.credentials();
         if (credentials === null)
@@ -319,5 +327,107 @@ export class CursorProvider extends Provider {
 
     parse(data) {
         return parseCursorUsage(data);
+    }
+}
+
+/** Shorten a quota group name for the panel: "Claude and GPT models" -> "Claude/GPT". */
+function groupLabel(name, fallback) {
+    if (!name)
+        return fallback;
+    return name.replace(/\s+models$/i, '').replace(/\s+and\s+/i, '/');
+}
+
+export function parseAntigravityUsage(data, tier = null) {
+    const windows = [];
+    for (const group of data.groups ?? []) {
+        for (const bucket of group.buckets ?? []) {
+            const remaining = Number(bucket.remainingFraction);
+            windows.push({
+                label: groupLabel(group.displayName, bucket.bucketId ?? 'quota'),
+                percent: clampPercent((1 - (Number.isFinite(remaining) ? remaining : 1)) * 100),
+                resetsAt: parseDate(bucket.resetTime),
+            });
+        }
+    }
+    return {plan: tier, windows, extra: null};
+}
+
+export class AntigravityProvider extends Provider {
+    constructor(session) {
+        super(session, 'antigravity', 'Antigravity');
+        this.loginHint = 'sign in with `agy`';
+        this._secret = undefined;
+        this._token = null;
+        this._project = null;
+        this._tier = null;
+    }
+
+    // The token lives in the keyring, so reading it is async: a synchronous
+    // libsecret call would block the compositor whenever the keyring is locked.
+    async prepare() {
+        if (this._secret === undefined) {
+            try {
+                const module = await import('gi://Secret');
+                this._secret = module.default;
+                Gio._promisify(this._secret, 'password_lookup', 'password_lookup_finish');
+            } catch (_error) {
+                this._secret = null;
+            }
+        }
+        if (!this._secret)
+            return;
+        try {
+            const schema = new this._secret.Schema(
+                'org.freedesktop.Secret.Generic',
+                this._secret.SchemaFlags.NONE,
+                {
+                    service: this._secret.SchemaAttributeType.STRING,
+                    username: this._secret.SchemaAttributeType.STRING,
+                }
+            );
+            const raw = await this._secret.password_lookup(
+                schema, {service: 'gemini', username: 'antigravity'}, null);
+            this._token = raw ? JSON.parse(raw)?.token?.access_token ?? null : null;
+        } catch (_error) {
+            this._token = null;
+        }
+    }
+
+    credentials() {
+        const token = manualToken(this.id) ?? this._token;
+        return token ? {token} : null;
+    }
+
+    headers({token}) {
+        return {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+            'User-Agent': ANTIGRAVITY_UA,
+        };
+    }
+
+    async fetch(cancellable) {
+        const credentials = this.credentials();
+        if (credentials === null)
+            throw new MissingCredentialsError(this.loginHint);
+        const headers = this.headers(credentials);
+
+        // Quota is scoped to a per-user project that loadCodeAssist hands out.
+        if (!this._project) {
+            const info = await getJson(
+                this._session,
+                `https://${ANTIGRAVITY_HOST}/v1internal:loadCodeAssist`,
+                headers, cancellable, {metadata: {ideType: 'ANTIGRAVITY'}});
+            this._project = info.cloudaicompanionProject ?? null;
+            this._tier = info.currentTier?.name ?? null;
+        }
+        if (!this._project)
+            throw new ProviderError('no quota project');
+
+        const data = await getJson(
+            this._session,
+            `https://${ANTIGRAVITY_HOST}/v1internal:retrieveUserQuotaSummary`,
+            headers, cancellable, {project: this._project});
+        return parseAntigravityUsage(data, this._tier);
     }
 }

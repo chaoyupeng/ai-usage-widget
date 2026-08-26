@@ -58,10 +58,24 @@ function cursorGlyph(cr) {
     cr.fill();
 }
 
+function antigravityGlyph(cr) {
+    cr.setLineWidth(2.6);
+    cr.setLineCap(Cairo.LineCap.ROUND);
+    cr.setLineJoin(Cairo.LineJoin.ROUND);
+    cr.moveTo(16, 22.5);
+    cr.lineTo(16, 10.5);
+    cr.stroke();
+    cr.moveTo(11.3, 15.2);
+    cr.lineTo(16, 10);
+    cr.lineTo(20.7, 15.2);
+    cr.stroke();
+}
+
 export const GLYPHS = {
     claude: claudeGlyph,
     codex: codexGlyph,
     cursor: cursorGlyph,
+    antigravity: antigravityGlyph,
 };
 
 /**

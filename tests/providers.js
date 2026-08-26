@@ -4,6 +4,7 @@ import {
     parseClaudeUsage,
     parseCodexUsage,
     parseCursorUsage,
+    parseAntigravityUsage,
 } from '../extension/providers.js';
 
 import {assertEqual} from './assert.js';
@@ -79,5 +80,46 @@ assertEqual(capped.extra, 'Spend: 75% of limit', 'Cursor spend limit');
 
 const noCycle = parseCursorUsage({});
 assertEqual(noCycle.windows.length, 0, 'Cursor without a billing cycle');
+
+// Shape captured from a live retrieveUserQuotaSummary response.
+const antigravity = parseAntigravityUsage({
+    groups: [
+        {
+            displayName: 'Gemini Models',
+            buckets: [{
+                bucketId: 'gemini-weekly',
+                window: 'weekly',
+                resetTime: '2026-09-02T04:21:34Z',
+                remainingFraction: 0.99582,
+            }],
+        },
+        {
+            displayName: 'Claude and GPT models',
+            buckets: [{
+                bucketId: '3p-weekly',
+                window: 'weekly',
+                resetTime: '2026-09-02T04:32:21Z',
+                remainingFraction: 1,
+            }],
+        },
+    ],
+}, 'Antigravity');
+assertEqual(antigravity.plan, 'Antigravity', 'Antigravity tier');
+assertEqual(antigravity.windows[0].label, 'Gemini', 'Antigravity gemini group label');
+assertEqual(antigravity.windows[1].label, 'Claude/GPT', 'Antigravity third-party group label');
+assertEqual(antigravity.windows[0].percent, 0, 'remainingFraction becomes percent used');
+assertEqual(antigravity.windows[1].percent, 0, 'a full bucket reads as 0% used');
+assertEqual(
+    antigravity.windows[0].resetsAt,
+    Date.parse('2026-09-02T04:21:34Z'),
+    'Antigravity reset time'
+);
+
+const halfUsed = parseAntigravityUsage({
+    groups: [{displayName: 'Gemini Models', buckets: [{remainingFraction: 0.25}]}],
+});
+assertEqual(halfUsed.windows[0].percent, 75, 'a quarter remaining reads as 75% used');
+assertEqual(halfUsed.windows[0].resetsAt, null, 'a bucket with no reset time');
+assertEqual(parseAntigravityUsage({}).windows.length, 0, 'Antigravity with no groups');
 
 print('Provider tests passed');

@@ -8,6 +8,7 @@ const PROVIDERS = [
     {id: 'claude', name: 'Claude'},
     {id: 'codex', name: 'Codex'},
     {id: 'cursor', name: 'Cursor'},
+    {id: 'antigravity', name: 'Antigravity'},
 ];
 
 export default class AIUsagePreferences extends ExtensionPreferences {

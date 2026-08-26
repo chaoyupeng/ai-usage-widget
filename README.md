@@ -1,11 +1,11 @@
 # AI Usage Widget
 
-A GNOME Shell panel widget showing Claude, Codex and Cursor usage side by side.
+A GNOME Shell panel widget showing Claude, Codex, Cursor and Antigravity usage side by side.
 
 The panel shows each provider's icon and primary-window percentage:
 
 ```text
-[Claude icon] 42%  [Codex icon] 18%  [Cursor icon] 7%
+[Claude icon] 42%  [Codex icon] 18%  [Cursor icon] 7%  [Antigravity icon] 1%
 ```
 
 Providers you are not signed in to are hidden, so the panel only shows the CLIs you actually use.
@@ -33,6 +33,7 @@ The widget reads the CLI credentials you already have:
 - Claude: `~/.claude/.credentials.json`, written by `claude login`
 - Codex: `~/.codex/auth.json`, written by `codex login`
 - Cursor: `~/.config/cursor/auth.json`, written by `cursor-agent login`
+- Antigravity: the `gemini`/`antigravity` login keyring entry, written by `agy`
 
 To supply a token by hand instead, create `~/.config/ai-usage-widget/config.json`:
 
@@ -41,7 +42,8 @@ To supply a token by hand instead, create `~/.config/ai-usage-widget/config.json
   "providers": {
     "claude": {"oauth_token": "..."},
     "codex": {"oauth_token": "..."},
-    "cursor": {"oauth_token": "..."}
+    "cursor": {"oauth_token": "..."},
+    "antigravity": {"oauth_token": "..."}
   }
 }
 ```
@@ -50,7 +52,7 @@ To supply a token by hand instead, create `~/.config/ai-usage-widget/config.json
 
 The default icon is a drawn badge that changes colour with usage: green under 50%, yellow under 75%, orange under 90%, red above, and grey when usage is unknown.
 
-To use your own artwork, drop `claude.svg`, `codex.svg`, `cursor.svg` (or `.png` / `.webp`) into `~/.config/ai-usage-widget/`, or pick a file in the extension's preferences. Custom icons keep their own colours.
+To use your own artwork, drop `claude.svg`, `codex.svg`, `cursor.svg`, `antigravity.svg` (or `.png` / `.webp`) into `~/.config/ai-usage-widget/`, or pick a file in the extension's preferences. Custom icons keep their own colours.
 
 ```bash
 gnome-extensions prefs ai-usage-widget@chamith
