@@ -21,9 +21,12 @@
 }
 
 .ai-usage-provider-button:hover,
-.ai-usage-provider-button:focus,
+.ai-usage-provider-button:focus {
+  background-color: rgba(150, 150, 150, 0.22);
+}
+
 .ai-usage-provider-button.selected {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(150, 150, 150, 0.45);
 }
 
 .ai-usage-switch-content {
