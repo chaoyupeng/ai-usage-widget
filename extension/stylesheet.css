@@ -1,3 +1,19 @@
+/* Hold the menu at one width. A usage row is laid out with text, so its width
+   moves with its content: the window label ranges 5h..usage (23px), the reset
+   ranges 59m..any moment (54px), and padStart(3) pads the percentage with
+   3.44px spaces against 8.45px digits (10px). The 20-cell bar is the one
+   stable part, filled and empty both being 11.53px. Measured in the shell
+   font, a row spans 367..455px, so the floor has to clear 455px (31em) or it
+   stops binding on the wide rows and the menu resizes again.
+
+   Width matters beyond looks. BoxPointer clamps the menu's x with
+   `workarea.width - (padding + natWidth)`, and for a right-hand panel that is
+   always the binding clamp, so a menu that changes width also slides
+   sideways by the same amount. */
+.ai-usage-menu {
+  min-width: 32em;
+}
+
 .ai-usage-panel {
   spacing: 8px;
 }

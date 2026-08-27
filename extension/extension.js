@@ -27,6 +27,7 @@ import {
     formatReset,
     formatRetry,
     makeBar,
+    reservedRows,
 } from './format.js';
 
 const THRESHOLDS = [75, 90, 100];
@@ -178,6 +179,7 @@ class UsageIndicator extends PanelMenu.Button {
     }
 
     _buildMenu() {
+        this.menu.box.add_style_class_name('ai-usage-menu');
         this._switcher = new ProviderSwitchItem(
             this._providers,
             this._selectedId,
@@ -321,8 +323,9 @@ class UsageIndicator extends PanelMenu.Button {
     _afterRefresh(provider) {
         this._updateVisibility();
         this._renderPanel();
-        if (provider.id === this._selectedId)
-            this._renderDetails();
+        // Any provider's data can change the reserved row count, so re-render
+        // the details even when the provider that just landed is not selected.
+        this._renderDetails();
     }
 
     /** Re-read credentials so a provider appears (or vanishes) without a request. */
@@ -414,7 +417,17 @@ class UsageIndicator extends PanelMenu.Button {
 
         const state = this._states.get(this._selectedId);
         const snapshot = state.snapshot;
-        this._planItem.visible = Boolean(snapshot?.plan);
+        const states = [...this._states.values()];
+
+        // Every provider reserves the same rows, so switching cannot resize the
+        // menu. Size matters beyond looks: BoxPointer clamps the menu's x with
+        // `workarea.width - (padding + natWidth)`, so on a right-hand panel a
+        // menu that changes width slides sideways by the same amount.
+        const rows = reservedRows(states, this._windowItems.length);
+        const anyPlan = states.some(other => other.snapshot?.plan);
+        const anyExtra = states.some(other => other.snapshot?.extra);
+
+        this._planItem.visible = anyPlan;
         this._planItem.label.text = snapshot?.plan ? `Plan: ${snapshot.plan}` : '';
 
         for (const item of this._windowItems)
@@ -436,12 +449,19 @@ class UsageIndicator extends PanelMenu.Button {
             const retry = formatRetry(state.retryAt, now);
             item.label.text = `Status: ${state.error}${retry ? ` (${retry})` : ''}`;
             item.visible = true;
-        } else if (!snapshot) {
+        } else if (!snapshot && row < this._windowItems.length) {
             this._windowItems[row].label.text = 'Status: loading…';
             this._windowItems[row].visible = true;
+            row++;
         }
 
-        this._extraItem.visible = Boolean(snapshot?.extra);
+        // Blank rows pad out to the reserved height.
+        for (let index = row; index < rows; index++) {
+            this._windowItems[index].label.text = '';
+            this._windowItems[index].visible = true;
+        }
+
+        this._extraItem.visible = anyExtra;
         this._extraItem.label.text = snapshot?.extra ?? '';
         if (!state.updatedAt) {
             this._updatedItem.label.text = 'Updated: never';
